@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>An Exact Portrait</title>
+<meta name="description" content="Who serves in the U.S. Congress: demographics, education, careers and voting ideology for every member since 1789.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><a href="#" id="home">An Exact Portrait</a></h1>
+      <p class="motto">A legislature “should be in miniature an exact portrait of the people at large.” John Adams, <i>Thoughts on Government</i>, 1776</p>
+    </div>
+    <nav id="tabs" aria-label="Views"></nav>
+  </header>
+  <p class="dek">Who serves in the U.S. Congress: demographics, education, careers and voting ideology for every member since 1789.</p>
+
+  <form class="filters" id="filters" onsubmit="return false">
+    <label>Congress <select id="f-congress"></select></label>
+    <label>Chamber <select id="f-chamber">
+      <option value="all">Both chambers</option><option value="H">House</option><option value="S">Senate</option>
+    </select></label>
+    <label>Party <select id="f-party"></select></label>
+    <label>State <select id="f-state"></select></label>
+    <label>Gender <select id="f-gender">
+      <option value="all">All</option><option value="F">Women</option><option value="M">Men</option>
+    </select></label>
+    <button type="button" class="link reset" id="reset">Reset filters</button>
+  </form>
+
+  <main id="view"><p class="muted">Loading 236 years of Congress…</p></main>
+
+  <footer>
+    Data: member rosters and biographical dates from <a href="https://github.com/unitedstates/congress-legislators">congress-legislators</a> (public domain);
+    membership by Congress and DW-NOMINATE ideology scores from <a href="https://voteview.com">Voteview</a> (Lewis, Poole, Rosenthal et al.);
+    education, careers, religion and military service from <a href="https://www.wikidata.org">Wikidata</a> (CC0).
+    Wikidata is crowd-edited and incomplete, especially before 1900, so every chart says how many members it covers.
+    “Members” means everyone who served at any point during a Congress, including people who joined mid-term.
+    <span id="generated"></span>
+  </footer>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

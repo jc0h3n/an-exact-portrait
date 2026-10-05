@@ -1,0 +1,13 @@
+{
+  "name": "an-exact-portrait",
+  "private": true,
+  "description": "Who serves in the U.S. Congress: demographics, education, careers and voting ideology for every member since 1789.",
+  "type": "module",
+  "scripts": {
+    "fetch": "node scripts/fetch.mjs",
+    "build": "node scripts/build.mjs",
+    "data": "node scripts/fetch.mjs && node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
