@@ -39,7 +39,7 @@ export function legend(items) {
 export function hbars(el, items, { format = fmtPct, max, tipText } = {}) {
   const m = max ?? Math.max(...items.map(i => i.value), 1e-9);
   el.innerHTML = `<div class="hbars">${items.map(i => `
-    <div class="hbar" tabindex="0" data-tip="${esc(tipText ? tipText(i) : `<b>${esc(i.label)}</b><br>${format(i.value)}`)}">
+    <div class="hbar${i.cls ? " " + i.cls : ""}" tabindex="0" data-tip="${esc(tipText ? tipText(i) : `<b>${esc(i.label)}</b><br>${format(i.value)}`)}">
       <span class="hbar-label">${esc(i.label)}</span>
       <span class="hbar-track"><span class="hbar-fill" style="width:${(100 * i.value / m).toFixed(2)}%"></span>
       <span class="hbar-val">${format(i.value)}</span></span>

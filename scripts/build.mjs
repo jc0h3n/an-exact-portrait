@@ -1,5 +1,6 @@
 // Joins the raw sources into site/data/congress.json. Run after fetch.mjs: node scripts/build.mjs
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { raceFromCategories } from "./benchmarks.mjs";
 
 const read = f => readFileSync(`raw/${f}`, "utf8");
 const json = f => JSON.parse(read(f));
@@ -124,6 +125,14 @@ for (const r of json("wd-religion.json")) {
   if (hit) p.rel = hit[0];
 }
 
+// ---- Race and ethnicity from Wikipedia categories (a lower bound) --------------------------------------------
+const RACES = ["White or not recorded", "Black", "Hispanic", "Asian American", "Native American", "Pacific Islander", "Multiracial"];
+const wpCats = existsSync("data/wp-categories.json") ? JSON.parse(readFileSync("data/wp-categories.json", "utf8")) : {};
+for (const p of people.values()) {
+  const cats = p.wikipedia && wpCats[p.wikipedia];
+  p.race = cats ? raceFromCategories(cats) : null;
+}
+
 // ---- Membership per Congress (Voteview) -----------------------------------------
 const partyNames = {};
 for (const r of parseCSV(read("HSall_parties.csv"))) partyNames[r.party_code] = r.party_name;
@@ -178,13 +187,19 @@ const out = {
     voteview: "https://voteview.com/data",
     wikidata: "https://www.wikidata.org"
   },
+  races: RACES,
+  benchmarks: { ...(existsSync("data/benchmarks.json") ? JSON.parse(readFileSync("data/benchmarks.json", "utf8")) : {}),
+    religion: JSON.parse(readFileSync("data/religion.json", "utf8")), aba: JSON.parse(readFileSync("data/aba.json", "utf8")) },
   levels: LEVELS, occupations: OCC_NAMES, religions: REL_NAMES, parties, institutions: insts, ivy: insts.map(s => IVY.has(s) ? 1 : 0),
-  // people: [bioguide, name, gender(M/F/null), born, wikipedia, highestLevel, [instIdx...], [occIdx...], relIdx|-1, military 0/1, [leadership...], lastName]
+  // people: [bioguide, name, gender(M/F/null), born, wikipedia, highestLevel, [instIdx...], [occIdx...], relIdx|-1, military 0/1, [leadership...], lastName,
+  //          raceIdx|-1 (-1: no Wikipedia categories checked), raceBits (black 1, hispanic 2, asian 4, native 8, pacific 16, lgbtq 32)]
   people: personList.map(p => {
     const highest = p.edu.length ? Math.min(...p.edu.map(e => e.level)) : LEVELS.length - 1;
     return [p.id, p.name, p.gender, p.born, p.wikipedia, highest,
       [...new Set(p.edu.map(e => iIndex.get(e.inst)))], [...p.occ].map(o => OCC_NAMES.indexOf(o)),
-      p.rel ? REL_NAMES.indexOf(p.rel) : -1, p.military ? 1 : 0, p.leadership, p.last];
+      p.rel ? REL_NAMES.indexOf(p.rel) : -1, p.military ? 1 : 0, p.leadership, p.last,
+      p.race ? RACES.indexOf(p.race.group) : -1,
+      p.race ? (p.race.black ? 1 : 0) | (p.race.hispanic ? 2 : 0) | (p.race.asian ? 4 : 0) | (p.race.native ? 8 : 0) | (p.race.pacific ? 16 : 0) | (p.race.lgbtq ? 32 : 0) : 0];
   }),
   // members: [congress, chamber H/S, personIdx, state, district|null, partyIdx, nominate1|null, nominate2|null, priorCongresses]
   members: [...rows.values()].sort((a, b) => a.c - b.c || a.ch.localeCompare(b.ch) || a.st.localeCompare(b.st))
@@ -205,4 +220,7 @@ const report = c => {
 };
 console.log(`people ${out.people.length}, seats ${out.members.length}, institutions ${insts.length}, parties ${parties.length}, added from Voteview only: ${missingPerson}`);
 for (const c of [1, 30, 60, 80, 100, 110, 119]) console.log(report(c));
+const cur = out.members.filter(m => m[0] === 119).map(m => out.people[m[2]]);
+const sh = f => Math.round(1000 * cur.filter(f).length / cur.length) / 10 + "%";
+console.log(`119th race (Wikipedia): checked ${sh(p => p[12] >= 0)}, Black ${sh(p => p[13] & 1)}, Hispanic ${sh(p => p[13] & 2)}, Asian ${sh(p => p[13] & 4)}, Native ${sh(p => p[13] & 8)}, LGBTQ ${sh(p => p[13] & 32)}`);
 console.log("size:", Math.round(JSON.stringify(out).length / 1024), "KB");

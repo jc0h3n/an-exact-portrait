@@ -20,7 +20,7 @@ const familyOf = name =>
   name === "Republican" ? "rep" :
   /Federalist|Pro-Administration|^Adams$|Anti-Jackson|Adams-Clay|National Republican|^Whig$|^Opposition$|^American$/.test(name) ? "whig" : "other";
 
-const TABS = [["demographics", "Demographics"], ["education", "Education"], ["ideology", "Ideology"], ["trends", "Over time"], ["members", "Members"]];
+const TABS = [["demographics", "Demographics"], ["education", "Education"], ["ideology", "Ideology"], ["country", "Compared with the country"], ["trends", "Over time"], ["members", "Members"]];
 
 let D, PEOPLE, ROWS, MAXC;
 const state = { tab: "demographics", c: 119, chamber: "all", party: "all", st: "all", gender: "all", q: "", sort: "name", dir: 1 };
@@ -29,7 +29,10 @@ const state = { tab: "demographics", c: 119, chamber: "all", party: "all", st: "
 function decode(raw) {
   PEOPLE = raw.people.map(p => ({
     id: p[0], name: p[1], gender: p[2], born: p[3], wiki: p[4], level: p[5],
-    insts: p[6], occs: p[7], rel: p[8], mil: p[9] === 1, lead: p[10], last: p[11] || p[1]
+    insts: p[6], occs: p[7], rel: p[8], mil: p[9] === 1, lead: p[10], last: p[11] || p[1],
+    raceChecked: p[12] >= 0, race: p[12] >= 0 ? raw.races[p[12]] : null,
+    black: !!(p[13] & 1), hispanic: !!(p[13] & 2), asian: !!(p[13] & 4), native: !!((p[13] & 8) || (p[13] & 16)), lgbtq: !!(p[13] & 32),
+    poc: p[12] > 0
   }));
   ROWS = raw.members.map(m => {
     const party = raw.parties[m[5]];
@@ -105,30 +108,56 @@ const familyKeys = rows => Object.keys(FAMILY).filter(f => rows.some(r => r.fam 
   return { label: names.length <= 2 ? names.join(", ") : FAMILY[f].label, color: FAMILY[f].color };
 });
 
+// ---- The country, for comparison ---------------------------------------------------------------------------------
+// U.S. adults from the Census Bureau (sex, race, Hispanic origin, age), Census CPS (education, ages 25 and over),
+// BLS (veterans), ABA (lawyers) and Pew (religion). See the "Compared with the country" view for sources.
+function usAdults() {
+  const B = D.benchmarks || {}, p = B.population?.adults, bands = B.population?.adultAgeBands || {};
+  if (!p) return null;
+  const over = min => Object.entries(bands).filter(([b]) => +b >= min).reduce((t, [, v]) => t + v, 0);
+  return { women: p.women, poc: 1 - p.whiteNH, black: p.blackAny, hispanic: p.hispanic, asian: p.asianAny, native: p.nativeAny,
+    over65: over(65), under40: 1 - over(40), bachelors: B.education?.bachelorsOrMore, graduate: B.education?.graduate, veterans: B.veterans?.adultsShare,
+    lawyers: B.aba && B.population ? B.aba.lawyers / B.population.adults.total : null, medianAge: B.population.adultMedianAge, total: p.total };
+}
+// Pairs of bars: this group of members (dark) and all U.S. adults (gray)
+function pairs(el, who, metrics) {
+  const items = metrics.filter(m => m.value != null && m.us != null).flatMap(m => [
+    { label: `${m.label}: ${who}`, value: m.value, cls: "hl", note: m.note },
+    { label: `${m.label}: U.S. adults`, value: m.us, cls: "ref pair-end", note: m.usNote }
+  ]);
+  if (!items.length) { el.innerHTML = `<p class="muted">No data for this selection.</p>`; return; }
+  hbars(el, items, { max: Math.min(1, Math.max(...items.map(i => i.value)) * 1.05), tipText: i => `<b>${esc(i.label)}</b><br>${fmtPct(i.value)}${i.note ? `<br>${esc(i.note)}` : ""}` });
+}
+const pctOfUS = (v, label = "of U.S. adults") => v != null ? ` · ${fmtPct(v)} ${label}` : "";
+
 // ---- Views --------------------------------------------------------------------------------------
 function demographics(sel) {
   const ages = sel.map(age).filter(a => a != null);
   const women = sel.filter(r => r.p.gender === "F").length;
   const withOcc = sel.filter(r => r.p.occs.length), withRel = sel.filter(r => r.p.rel >= 0);
+  const US = usAdults(), checked = sel.filter(r => r.p.raceChecked);
   $("view").innerHTML = summary(sel) + `
     <div class="tiles">
       ${tile("Members", fmtInt(sel.length))}
-      ${tile("Women", fmtPct(women / sel.length), `${fmtInt(women)} members`)}
-      ${tile("Median age", ages.length ? Math.round(median(ages)) : "–", `at the start of the Congress`)}
+      ${tile("Women", fmtPct(women / sel.length), `${fmtInt(women)} members${pctOfUS(US?.women)}`)}
+      ${tile("People of color", fmtPct(share(sel.filter(r => r.p.raceChecked), r => r.p.poc)), `on record (a lower bound)${pctOfUS(US?.poc)}`)}
+      ${tile("Median age", ages.length ? Math.round(median(ages)) : "–", `at the start of the Congress${US ? ` · U.S. adults ${US.medianAge}` : ""}`)}
       ${tile("Newcomers", fmtPct(share(sel, r => r.prior === 0)), "first Congress ever")}
-      ${tile("Military service", fmtPct(share(sel, r => r.p.mil)), "on record (a lower bound)")}
+      ${tile("Military service", fmtPct(share(sel, r => r.p.mil)), `on record (a lower bound)${pctOfUS(US?.veterans, "of adults are veterans")}`)}
     </div>
     <div class="grid2">
       ${chart("c-age", "Age at the start of the Congress", "Members per five-year age band. Hover a column for the count.")}
       ${chart("c-born", "Birth decade", "Members born in each decade.")}
       ${chart("c-tenure", "Experience", "Congresses served before this one, in either chamber. Each Congress is two years.")}
       ${chart("c-gender", "Women by party", "Share of each party's members who are women.")}
+      ${chart("c-race", "Race and ethnicity on record", "From the categories on each member's Wikipedia article, which are incomplete, so each group is a lower bound. Hispanic members of any race count as Hispanic.")}
       ${chart("c-occ", "Careers before Congress", coverage(withOcc.length, sel.length, "Careers are") + " Members can have more than one. Political offices are left out.")}
       ${chart("c-rel", "Religion", coverage(withRel.length, sel.length, "Religion is") + " Shares are of members with a known religion.")}
     </div>`;
   const bands = [];
   for (let a = 25; a <= 90; a += 5) bands.push({ lo: a, hi: a + 4 });
   bands[0].lo = 0; bands.at(-1).hi = 200;
+  barsFromCounts($("c-race"), checked.filter(r => r.p.poc).map(r => r.p.race), checked.length);
   columns($("c-age"), bands.map(b => {
     const n = ages.filter(a => a >= b.lo && a <= b.hi).length;
     const label = b.lo === 0 ? "<30" : b.hi === 200 ? "90+" : `${b.lo}`;
@@ -214,6 +243,75 @@ function ideology(sel) {
     { xTitle: "← more liberal · more conservative →", yTitle: "Second dimension" });
 }
 
+function country(sel) {
+  const US = usAdults(), B = D.benchmarks || {};
+  if (!US) { $("view").innerHTML = summary(sel) + `<p class="muted">Population figures are unavailable in this build.</p>`; return; }
+  const ages = sel.map(age).filter(a => a != null);
+  const checked = sel.filter(r => r.p.raceChecked), known = sel.filter(r => r.p.level < D.levels.length - 1);
+  const lawyer = r => r.p.level === 1 || r.p.occs.includes(0);
+  const withRel = sel.filter(r => r.p.rel >= 0);
+  $("view").innerHTML = summary(sel) + `
+    <p class="dek">How this Congress compares with the adults it represents. Dark bars are members; gray bars are all U.S. adults.</p>
+    <div class="tiles">
+      ${tile("Women", fmtPct(share(sel, r => r.p.gender === "F")), `${fmtPct(US.women)} of U.S. adults`)}
+      ${tile("People of color", fmtPct(share(checked, r => r.p.poc)), `on record (a lower bound) · ${fmtPct(US.poc)} of U.S. adults`)}
+      ${tile("Median age", ages.length ? Math.round(median(ages)) : "–", `U.S. adults: ${US.medianAge}`)}
+      ${tile("Lawyers", fmtPct(share(sel, lawyer)), US.lawyers ? `${fmtPct(US.lawyers)} of U.S. adults, about 1 in ${fmtInt(1 / US.lawyers)}` : "")}
+      ${tile("Graduate degree", fmtPct(share(known, r => r.p.level <= 2)), `of members with education on record · ${fmtPct(US.graduate)} of adults 25+`)}
+    </div>
+    <div class="grid2">
+      ${chart("x-people", "Who they are", "Women, race and ethnicity (members' from Wikipedia categories, a lower bound), and age at the start of the Congress.", true)}
+      ${chart("x-path", "Schooling and careers", "Education among members with education on record; lawyers are members with a law degree or a law career; military service on record is a lower bound, set against veterans as a share of adults.", true)}
+      ${chart("x-age", "Age", "Share of members and of U.S. adults (18 and over) in each five-year age band.", true)}
+      ${chart("x-rel", "Religion", `Members with a religion on record (${fmtInt(withRel.length)} of ${fmtInt(sel.length)}) against U.S. adults in Pew's Religious Landscape Study. Wikidata records religion for some members and not others, so treat member shares with care.`, true)}
+    </div>
+    <h2 class="section-title">Sources for the comparisons</h2>
+    <ul class="sources">
+      ${B.population ? `<li>Population: ${esc(B.population.source)}; adults 18 and over. <a href="${esc(B.population.url)}">Data file</a>.</li>` : ""}
+      ${B.education ? `<li>Education: ${esc(B.education.source)}. <a href="${esc(B.education.url)}">Table</a>.</li>` : ""}
+      ${B.veterans ? `<li>Veterans: ${esc(B.veterans.source)}. <a href="${esc(B.veterans.url)}">Series</a>.</li>` : ""}
+      ${B.aba ? `<li>Lawyers: ${esc(B.aba.source)}: ${fmtInt(B.aba.lawyers)} active lawyers.</li>` : ""}
+      ${B.religion ? `<li>Religion: ${esc(B.religion.source)}. <a href="${esc(B.religion.url)}">Report</a>.</li>` : ""}
+      <li>Members' race and ethnicity: categories on each member's Wikipedia article (for example “African-American United States senators” or “Hispanic and Latino American members of the United States Congress”). Black and Asian Americans count those of more than one race, as do the population figures used here.</li>
+    </ul>`;
+  pairs($("x-people"), "members", [
+    { label: "Women", value: share(sel, r => r.p.gender === "F"), us: US.women },
+    { label: "People of color", value: share(checked, r => r.p.poc), us: US.poc },
+    { label: "Black", value: share(checked, r => r.p.black), us: US.black },
+    { label: "Hispanic or Latino", value: share(checked, r => r.p.hispanic), us: US.hispanic },
+    { label: "Asian American", value: share(checked, r => r.p.asian), us: US.asian },
+    { label: "Native American or Pacific Islander", value: share(checked, r => r.p.native), us: US.native },
+    { label: "Age 65 or older", value: share(ages, a => a >= 65), us: US.over65 },
+    { label: "Under 40", value: share(ages, a => a < 40), us: US.under40 }
+  ]);
+  pairs($("x-path"), "members", [
+    { label: "Bachelor's degree or more", value: share(known, r => r.p.level <= 3), us: US.bachelors, usNote: "Adults 25 and over." },
+    { label: "Graduate degree", value: share(known, r => r.p.level <= 2), us: US.graduate, usNote: "Master's, professional or doctoral; adults 25 and over." },
+    { label: "Lawyers", value: share(sel, lawyer), us: US.lawyers, usNote: "Active lawyers (ABA) as a share of adults." },
+    { label: "Military service", value: share(sel, r => r.p.mil), us: US.veterans, usNote: "Veterans as a share of adults 18 and over (BLS)." }
+  ]);
+  const bands = B.population?.adultAgeBands || {}, keys = Object.keys(bands).map(Number).sort((a, b) => a - b);
+  const bandOf = a => a < 20 ? 18 : Math.min(85, Math.floor(a / 5) * 5);
+  const mem = {}; for (const a of ages) mem[bandOf(a)] = (mem[bandOf(a)] || 0) + 1 / ages.length;
+  lines($("x-age"), [
+    { label: "U.S. adults", color: "var(--axis)", points: keys.map(k => ({ x: k, y: bands[k] })) },
+    { label: "Members", color: "var(--bar)", points: keys.map(k => ({ x: k, y: mem[k] || 0 })) }
+  ], { step: 5, yMin: 0, height: 240, xLabel: (x, long) => long ? (x === 18 ? "Ages 18–19" : x === 85 ? "Ages 85 and over" : `Ages ${x}–${x + 4}`) : String(x) });
+  const R = B.religion?.shares || {};
+  const relShare = names => share(withRel, r => names.includes(D.religions[r.p.rel]));
+  pairs($("x-rel"), "members", [
+    { label: "Protestant or other Christian", value: relShare(["Protestant", "Christian (unspecified)"]), us: R.Protestant, usNote: "Protestant (Pew); members' “Christian, unspecified” are counted here." },
+    { label: "Catholic", value: relShare(["Catholic"]), us: R.Catholic },
+    { label: "Jewish", value: relShare(["Jewish"]), us: R.Jewish },
+    { label: "Latter-day Saint", value: relShare(["Latter-day Saint"]), us: R["Latter-day Saint"] },
+    { label: "Orthodox Christian", value: relShare(["Orthodox Christian"]), us: R["Orthodox Christian"] },
+    { label: "Muslim", value: relShare(["Muslim"]), us: R.Muslim },
+    { label: "Hindu", value: relShare(["Hindu"]), us: R.Hindu },
+    { label: "Buddhist", value: relShare(["Buddhist"]), us: R.Buddhist },
+    { label: "No religion", value: relShare(["Nonreligious or deist"]), us: R.Nonreligious, usNote: "Religiously unaffiliated (atheist, agnostic or nothing in particular)." }
+  ]);
+}
+
 function trends() {
   const rows = ROWS.filter(r => match(r, { ignoreCongress: true }));
   const byC = new Map();
@@ -226,9 +324,10 @@ function trends() {
   const ink = "var(--bar)";
   $("view").innerHTML = `<p class="summary">Every Congress from the 1st (1789) to the ${ordinal(MAXC)}${state.chamber !== "all" || state.party !== "all" || state.st !== "all" || state.gender !== "all" ? ", for the filters above" : ""}. Hover a chart to read any Congress.</p>
     <div class="grid2">
-      ${state.gender === "all" ? chart("t-women", "Women", "Share of members who are women.") : ""}
+      ${state.gender === "all" ? chart("t-women", "Women", `Share of members who are women${usAdults() ? `; ${fmtPct(usAdults().women)} of U.S. adults are women` : ""}.`) : ""}
       ${chart("t-age", "Median age", "At the start of each Congress.")}
       ${chart("t-law", "Lawyers", "Members with a law career or law degree on record.")}
+      ${chart("t-race", "Race and ethnicity on record", `Black, Hispanic and Asian American members, from Wikipedia categories (a lower bound). For comparison, today ${usAdults() ? `${fmtPct(usAdults().black)}, ${fmtPct(usAdults().hispanic)} and ${fmtPct(usAdults().asian)} of U.S. adults` : "U.S. adults"} belong to these groups.`, true)}
       ${chart("t-ivy", "Ivy League", "Members who attended an Ivy League school.")}
       ${chart("t-mil", "Military service on record", "A lower bound: older records especially miss service.")}
       ${chart("t-new", "Newcomers", "Members serving their first Congress.")}
@@ -238,6 +337,11 @@ function trends() {
   if (state.gender === "all") lines($("t-women"), [{ label: "Women", color: ink, points: series(rs => share(rs, r => r.p.gender === "F")) }], { ...opts, yMin: 0 });
   lines($("t-age"), [{ label: "Median age", color: ink, points: series(rs => median(rs.map(age).filter(a => a != null))) }], { ...opts, yFormat: v => Math.round(v) });
   lines($("t-law"), [{ label: "Lawyers", color: ink, points: series(rs => share(rs, r => r.p.level === 1 || r.p.occs.includes(0))) }], { ...opts, yMin: 0, yMax: 1 });
+  lines($("t-race"), [
+    { label: "Black", color: "var(--p-dem)", points: series(rs => share(rs.filter(r => r.p.raceChecked), r => r.p.black)) },
+    { label: "Hispanic", color: "var(--p-whig)", points: series(rs => share(rs.filter(r => r.p.raceChecked), r => r.p.hispanic)) },
+    { label: "Asian American", color: "var(--p-other)", points: series(rs => share(rs.filter(r => r.p.raceChecked), r => r.p.asian)) }
+  ], { ...opts, yMin: 0, height: 240 });
   lines($("t-ivy"), [{ label: "Ivy League", color: ink, points: series(rs => share(rs, r => r.p.insts.some(i => D.ivy[i]))) }], { ...opts, yMin: 0 });
   lines($("t-mil"), [{ label: "Military service", color: ink, points: series(rs => share(rs, r => r.p.mil)) }], { ...opts, yMin: 0 });
   lines($("t-new"), [{ label: "Newcomers", color: ink, points: series(rs => share(rs, r => r.prior === 0)) }], { ...opts, yMin: 0 });
@@ -289,11 +393,11 @@ function members(sel) {
 
 function downloadCSV(rows) {
   const head = ["bioguide_id", "name", "party", "state", "district", "chamber", "gender", "birth_year", "age_at_start", "prior_congresses",
-    "highest_education", "schools", "careers", "religion", "military_service_on_record", "nominate_dim1", "nominate_dim2"];
+    "highest_education", "schools", "careers", "religion", "military_service_on_record", "race_ethnicity_on_record", "nominate_dim1", "nominate_dim2"];
   const cell = v => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [head.join(",")].concat(rows.map(r => [r.p.id, r.p.name, r.party, r.st, r.d, r.ch === "S" ? "Senate" : "House", r.p.gender, r.p.born, age(r), r.prior,
     D.levels[r.p.level], r.p.insts.map(i => D.institutions[i]).join("; "), r.p.occs.map(o => D.occupations[o]).join("; "),
-    r.p.rel >= 0 ? D.religions[r.p.rel] : "", r.p.mil ? "yes" : "", r.x, r.y].map(cell).join(",")));
+    r.p.rel >= 0 ? D.religions[r.p.rel] : "", r.p.mil ? "yes" : "", r.p.poc ? r.p.race : "", r.x, r.y].map(cell).join(",")));
   const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
   const a = Object.assign(document.createElement("a"), { href: url, download: `congress-${state.c}-members.csv` });
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -304,7 +408,7 @@ function render() {
   renderControls(); writeHash();
   if (state.tab === "trends") return trends();
   const sel = selection();
-  ({ demographics, education, ideology, members })[state.tab](sel);
+  ({ demographics, education, ideology, country, members })[state.tab](sel);
 }
 
 document.addEventListener("click", e => {

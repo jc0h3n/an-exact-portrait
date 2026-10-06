@@ -112,3 +112,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td .key { margin-right: 4px; }
 
 footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--grid); color: var(--muted); font-size: 0.85em; max-width: 80ch; }
+
+/* Comparisons with the country */
+.hbar.ref .hbar-fill { background: var(--axis); }
+.hbar.ref .hbar-label { color: var(--ink-2); }
+.hbar.hl .hbar-label { font-weight: 600; }
+.hbar.pair-end { margin-bottom: 8px; }
+.section-title { font-size: 1.25em; margin: 44px 0 4px; }
+.caveat { font-size: 0.85em; color: var(--ink-2); background: color-mix(in srgb, var(--grid) 45%, transparent); border-radius: 6px; padding: 8px 12px; max-width: 80ch; margin: 22px 0; }
+.sources { font-size: 0.85em; color: var(--ink-2); max-width: 85ch; }
+.sources li { margin-bottom: 4px; }

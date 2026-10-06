@@ -49,3 +49,29 @@ for (const [name, q] of Object.entries(sparql)) {
   writeFileSync(`raw/${name}`, JSON.stringify(rows));
   console.log("saved", name, rows.length, "rows");
 }
+
+// ---- Race and ethnicity (Wikipedia categories) and national benchmarks -------------------------------------------
+// Members' Wikipedia articles carry categories such as "African-American United States senators" and "Hispanic and
+// Latino American members of the United States Congress". Only categories that bear on race, ethnicity or LGBTQ
+// identity are kept. Benchmarks (Census, BLS) go to data/benchmarks.json, which is committed: if a source fails,
+// the last good copy is kept.
+import { readFileSync, existsSync } from "node:fs";
+import { wikiCategories, population, education, veterans, occupations } from "./benchmarks.mjs";
+const RELEVANT = /american|hispanic|latin|asian|native|black|african|afro|descent|lgbt|gay|lesbian|bisexual|emigrants|hawaiian|pacific|samoan|chamorro|cherokee|navajo|choctaw|chickasaw|muscogee|ojibwe|lakota|osage|seminole|pueblo|comanche|kiowa|lumbee|chicano/i;
+const step = async (name, fn) => { try { await fn(); } catch (e) { console.warn(`! ${name} failed, keeping the last good copy: ${e.message}`); } };
+await step("Wikipedia categories", async () => {
+  const titles = [...new Set([...JSON.parse(readFileSync("raw/legislators-current.json", "utf8")), ...JSON.parse(readFileSync("raw/legislators-historical.json", "utf8"))]
+    .map(l => l.id.wikipedia).filter(Boolean))];
+  const cats = await wikiCategories(titles, { pause: 250 });
+  const kept = Object.fromEntries(Object.entries(cats).map(([t, cs]) => [t, cs.filter(c => RELEVANT.test(c))]));
+  writeFileSync("data/wp-categories.json", JSON.stringify(kept));
+  console.log("saved Wikipedia categories for", Object.keys(kept).length, "of", titles.length, "articles");
+});
+const bench = existsSync("data/benchmarks.json") ? JSON.parse(readFileSync("data/benchmarks.json", "utf8")) : {};
+await step("Census population", async () => { bench.population = await population(); });
+await step("Census education", async () => { bench.education = await education(); });
+await step("BLS veterans", async () => { bench.veterans = await veterans(); });
+await step("BLS occupations", async () => { bench.bls = await occupations({ workforce: "Total, 16 years and over", lawyers: "Lawyers" }); });
+bench.fetched = new Date().toISOString().slice(0, 10);
+writeFileSync("data/benchmarks.json", JSON.stringify(bench, null, 1) + "\n");
+console.log("benchmarks:", Object.keys(bench).join(", "));

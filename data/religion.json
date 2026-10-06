@@ -1,0 +1,20 @@
+{
+ "note": "Updated by hand when Pew publishes a new Religious Landscape Study (roughly every seven years). Shares of all U.S. adults.",
+ "source": "Pew Research Center, 2023-24 Religious Landscape Study (published February 26, 2025)",
+ "url": "https://www.pewresearch.org/religion/2025/02/26/religious-landscape-study-religious-identity/",
+ "year": 2024,
+ "shares": {
+  "Protestant": 0.40,
+  "Catholic": 0.19,
+  "Latter-day Saint": 0.02,
+  "Orthodox Christian": 0.01,
+  "Jewish": 0.017,
+  "Muslim": 0.012,
+  "Buddhist": 0.011,
+  "Hindu": 0.009,
+  "Nonreligious": 0.29
+ },
+ "christian": 0.62,
+ "evangelical": 0.23,
+ "unaffiliated": { "atheist": 0.05, "agnostic": 0.06, "nothingInParticular": 0.19 }
+}
